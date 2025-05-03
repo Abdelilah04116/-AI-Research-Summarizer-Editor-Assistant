@@ -1,178 +1,187 @@
-"""
-Streamlit frontend for the Research Assistant
-"""
 import streamlit as st
-import requests
-import time
-import os
-from typing import Dict, Any, List, Optional
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.express as px
+from wordcloud import WordCloud
+from io import StringIO
 
+# Configuration de la page
+st.set_page_config(
+    page_title="Multi-Agent Research Assistant",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Constants
-API_URL = os.environ.get("API_URL", "http://backend:8000")
-POLLING_INTERVAL = 3  # seconds
+# Personnalisation CSS
+st.markdown("""
+<style>
+    .main-header {color: #4B8BBE; font-size: 32px;}
+    .sub-header {color: #4B8BBE; font-size: 24px;}
+    .status-complete {color: green;}
+    .status-progress {color: orange;}
+    .status-waiting {color: gray;}
+    .chat-user {
+        background-color: #e6f3ff;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 5px 0 5px 20%;
+    }
+    .chat-assistant {
+        background-color: #f0f2f6;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 5px 20% 5px 0;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-
-def main():
-    """Main Streamlit application"""
-    st.set_page_config(
-        page_title="Research Assistant",
-        page_icon="🔍",
-        layout="wide",
-    )
+# Sidebar
+with st.sidebar:
+    st.header("Configuration")
     
-    st.title("🔍 AI Research Assistant")
-    st.subheader("Powered by CrewAI Multi-Agent System")
+    openai_key = st.text_input("OpenAI API Key", type="password")
+    model = st.selectbox("Model", ["GPT-4", "GPT-3.5-Turbo"])
+    scholar_key = st.text_input("Google Scholar API Key", type="password")
+    pubmed_key = st.text_input("PubMed API Key", type="password")
     
-    # Sidebar for API key
-    with st.sidebar:
-        st.header("Configuration")
-        api_key = st.text_input("OpenAI API Key", type="password")
-        st.caption("Your API key is used only for this session and not stored.")
+    st.header("Navigation")
+    
+    st.button("New Research")
+    st.button("Research History")
+    st.button("Feedback Analytics")
+    
+    st.header("About")
+    st.write("Uses AI agents for research, summarization, and editing.")
+
+# Main Content
+st.markdown("<h1 class='main-header'>Multi-Agent Research Assistant</h1>", unsafe_allow_html=True)
+
+# Research Status
+st.markdown("<h2>Research Status</h2>", unsafe_allow_html=True)
+st.markdown("<strong>Status:</strong> In Progress", unsafe_allow_html=True)
+
+status_cols = st.columns(3)
+with status_cols[0]:
+    st.markdown("<h3>✅ Researcher</h3>", unsafe_allow_html=True)
+    st.markdown("<p class='status-complete'>Complete</p>", unsafe_allow_html=True)
+with status_cols[1]:
+    st.markdown("<h3>⏳ Summarizer</h3>", unsafe_allow_html=True)
+    st.markdown("<p class='status-progress'>In Progress</p>", unsafe_allow_html=True)
+with status_cols[2]:
+    st.markdown("<h3>⏱️ Editor</h3>", unsafe_allow_html=True)
+    st.markdown("<p class='status-waiting'>Waiting</p>", unsafe_allow_html=True)
+
+# Tabs
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Final Report", "Summary", "Visualizations", "External Sources", "Research Data", "Process Log"])
+
+with tab1:
+    st.header("Final Report")
+    st.write("The final report will appear here when complete.")
+
+with tab2:
+    st.header("Summary")
+    st.write("Research summary will appear here.")
+
+with tab3:
+    st.header("Visualizations")
+    
+    viz_tab1, viz_tab2, viz_tab3, viz_tab4 = st.tabs(["Word Frequency", "Word Cloud", "Topic Clusters", "Sentiment Analysis"])
+    
+    with viz_tab1:
+        # Sample data for word frequency
+        words = ["research", "data", "analysis", "ai", "results", "method", "paper"]
+        frequencies = [24, 18, 15, 12, 10, 8, 5]
         
-        st.markdown("---")
-        st.markdown("### About")
-        st.markdown("""
-        This research assistant uses a team of AI agents to:
-        1. Research topics in-depth
-        2. Summarize findings
-        3. Create polished final reports
-        """)
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.bar(words, frequencies)
+        ax.set_title("Word Frequency")
+        ax.set_xlabel("Words")
+        ax.set_ylabel("Frequency")
+        st.pyplot(fig)
     
-    # Main content
-    col1, col2 = st.columns([2, 3])
-    
-    with col1:
-        st.header("Research Request")
-        with st.form("research_form"):
-            topic = st.text_input("Research Topic", placeholder="e.g., Quantum Computing")
-            depth = st.select_slider(
-                "Research Depth",
-                options=["basic", "medium", "comprehensive"],
-                value="medium"
-            )
-            
-            focus_areas = st.text_area(
-                "Focus Areas (Optional)",
-                placeholder="Enter specific areas to focus on, one per line"
-            )
-            
-            submit_button = st.form_submit_button("Start Research")
-            
-            if submit_button:
-                if not api_key:
-                    st.error("Please enter your OpenAI API key")
-                elif not topic:
-                    st.error("Please enter a research topic")
-                else:
-                    # Parse focus areas
-                    focus_areas_list = [area.strip() for area in focus_areas.split("\n") if area.strip()]
-                    
-                    # Create session state for tracking
-                    st.session_state.research_in_progress = True
-                    st.session_state.topic = topic
-                    
-                    # Submit research request
-                    with st.spinner("Submitting research request..."):
-                        try:
-                            response = requests.post(
-                                f"{API_URL}/research",
-                                json={
-                                    "topic": topic,
-                                    "depth": depth,
-                                    "focus_areas": focus_areas_list
-                                },
-                                headers={"X-API-Key": api_key}
-                            )
-                            
-                            if response.status_code == 200:
-                                data = response.json()
-                                st.session_state.task_id = data["task_id"]
-                                st.success("Research request submitted!")
-                            else:
-                                st.error(f"Error: {response.status_code} - {response.text}")
-                                st.session_state.research_in_progress = False
-                        
-                        except Exception as e:
-                            st.error(f"Failed to connect to the API: {str(e)}")
-                            st.session_state.research_in_progress = False
-    
-    with col2:
-        st.header("Research Results")
+    with viz_tab2:
+        # Sample data for word cloud
+        text = "research data analysis AI results method paper research AI data analysis research"
+        wordcloud = WordCloud(width=800, height=400, background_color="white").generate(text)
         
-        # Check if research is in progress
-        if st.session_state.get("research_in_progress", False):
-            task_id = st.session_state.get("task_id")
-            topic = st.session_state.get("topic")
-            
-            st.info(f"Researching: {topic}")
-            
-            progress_placeholder = st.empty()
-            results_placeholder = st.empty()
-            
-            try:
-                # Poll for results
-                with progress_placeholder:
-                    progress_bar = st.progress(0)
-                    
-                    # Simulated progress since we don't have real-time progress info
-                    for percent_complete in range(0, 101, 10):
-                        # Check status
-                        response = requests.get(f"{API_URL}/research/{task_id}")
-                        data = response.json()
-                        
-                        if data["status"] == "complete":
-                            progress_bar.progress(100)
-                            
-                            with results_placeholder:
-                                display_results(data["results"])
-                            
-                            st.session_state.research_in_progress = False
-                            break
-                        
-                        elif data["status"] == "failed":
-                            st.error(f"Research failed: {data.get('error', 'Unknown error')}")
-                            st.session_state.research_in_progress = False
-                            break
-                        
-                        # Update progress bar
-                        progress_bar.progress(percent_complete)
-                        time.sleep(POLLING_INTERVAL)
-                
-            except Exception as e:
-                st.error(f"Error retrieving results: {str(e)}")
-                st.session_state.research_in_progress = False
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.imshow(wordcloud, interpolation='bilinear')
+        ax.axis("off")
+        st.pyplot(fig)
+    
+    with viz_tab3:
+        # Sample data for topic clusters
+        df = pd.DataFrame({
+            'topic': ['Topic 1', 'Topic 2', 'Topic 3', 'Topic 4'],
+            'count': [35, 27, 21, 17],
+            'keyword1': ['research', 'data', 'method', 'results'],
+            'keyword2': ['paper', 'analysis', 'approach', 'findings']
+        })
         
-        else:
-            st.info("Submit a research topic to start")
-
-
-def display_results(results: Dict[str, Any]):
-    """Display research results in tabs"""
-    st.success("Research completed!")
+        fig = px.scatter(df, x='count', y='topic', size='count', 
+                         text='topic', hover_data=['keyword1', 'keyword2'],
+                         title="Topic Clusters")
+        st.plotly_chart(fig)
     
-    tab1, tab2, tab3 = st.tabs(["Final Report", "Summary", "Raw Research"])
-    
-    with tab1:
-        st.markdown("## Final Report")
-        st.markdown(results["final_report"])
+    with viz_tab4:
+        # Sample data for sentiment analysis
+        sentiments = ['Positive', 'Neutral', 'Negative']
+        values = [65, 25, 10]
         
-        # Download button for report
-        st.download_button(
-            label="Download Report",
-            data=results["final_report"],
-            file_name=f"{results['topic'].replace(' ', '_')}_report.md",
-            mime="text/markdown"
-        )
-    
-    with tab2:
-        st.markdown("## Summary")
-        st.markdown(results["summary"])
-    
-    with tab3:
-        st.markdown("## Raw Research Data")
-        st.markdown(results["research_data"]["raw_research"])
+        fig = px.pie(values=values, names=sentiments, title="Sentiment Analysis")
+        st.plotly_chart(fig)
 
+with tab4:
+    st.header("External Sources")
+    st.write("List of external sources consulted during research.")
+    sources = [
+        {"title": "Sample Paper 1", "authors": "Smith et al.", "year": 2023},
+        {"title": "Sample Paper 2", "authors": "Johnson et al.", "year": 2022},
+        {"title": "Sample Paper 3", "authors": "Williams et al.", "year": 2023}
+    ]
+    st.table(pd.DataFrame(sources))
 
-if __name__ == "__main__":
-    main()
+with tab5:
+    st.header("Research Data")
+    st.write("Raw research data will appear here.")
+
+with tab6:
+    st.header("Process Log")
+    st.write("Detailed log of the research process.")
+
+# Chat Section
+st.markdown("<h3 class='sub-header'>Chat with Research Assistant</h3>", unsafe_allow_html=True)
+
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "user", "content": "What are the key findings?"},
+        {"role": "assistant", "content": "The research highlights several important findings. Once the summarizer agent completes its work, I can provide you with a comprehensive overview of the key insights discovered during this research project."}
+    ]
+
+for message in st.session_state.messages:
+    if message["role"] == "user":
+        st.markdown(f"<div class='chat-user'>{message['content']}</div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div class='chat-assistant'>{message['content']}</div>", unsafe_allow_html=True)
+
+chat_input = st.text_input("Ask a question", key="chat_input")
+chat_button = st.button("Send")
+
+if chat_button and chat_input:
+    st.session_state.messages.append({"role": "user", "content": chat_input})
+    # In a real application, you would process the question here
+    response = "I'll need to analyze that further. The AI assistant will respond when ready."
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.experimental_rerun()
+
+# Feedback Section
+st.markdown("<h3 class='sub-header'>Feedback</h3>", unsafe_allow_html=True)
+
+feedback_type = st.selectbox("Feedback Category", ["Overall Quality", "Accuracy", "Relevance", "Completeness"])
+feedback_rating = st.slider("Rating", 1, 5, 4)
+feedback_text = st.text_area("Your thoughts...")
+feedback_button = st.button("Submit Feedback")
+
+if feedback_button:
+    st.success("Thank you for your feedback!")
